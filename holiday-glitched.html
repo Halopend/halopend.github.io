@@ -625,11 +625,88 @@
         border-radius: 50%;
         box-shadow: 
             inset -15px -15px 25px rgba(210, 200, 150, 0.3),
-            0 0 20px #fefcd7, 
-            0 0 60px #fefcd7, 
-            0 0 100px rgba(254, 252, 215, 0.4);
+            0 0 8px #ffd700,
+            0 0 20px rgba(255,215,0,0.6),
+            0 0 60px rgba(255,215,0,0.35),
+            0 0 100px rgba(255,215,0,0.2);
         z-index: 1;
-        opacity: 0.9;
+        opacity: 0.95;
+        cursor: pointer;
+        transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .moon:hover {
+        transform: scale(1.06);
+        box-shadow:
+            inset -15px -15px 25px rgba(210, 200, 150, 0.3),
+            0 0 12px #ffd700,
+            0 0 30px rgba(255,215,0,0.7),
+            0 0 70px rgba(255,215,0,0.45);
+    }
+
+    /* Moon video overlay styles */
+    .video-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.85);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100000;
+    }
+    .video-panel {
+        width: min(1200px, 90%);
+        max-width: 1200px;
+        aspect-ratio: 16 / 9;
+        position: relative;
+        background: #000;
+        border-radius: 10px;
+        box-shadow: 0 0 60px rgba(0,0,0,0.8), 0 0 30px rgba(255,215,0,0.2);
+        overflow: hidden;
+    }
+    .video-close {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 2;
+        background: rgba(0,0,0,0.6);
+        color: #ffd700;
+        border: 1px solid rgba(255,215,0,0.2);
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 20px;
+    }
+
+    .video-fallback {
+        position: absolute;
+        bottom: 12px;
+        left: 12px;
+        right: 12px;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        z-index: 2;
+        pointer-events: auto;
+    }
+
+    .video-fallback a {
+        background: #ffd700;
+        color: #0a1628;
+        padding: 8px 12px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 700;
+        box-shadow: 0 4px 18px rgba(255,215,0,0.2);
+    }
+
+    .video-fallback a:hover { filter: brightness(0.95); }
+
+    #moon-video-iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #000;
     }
 
     .penguin {
@@ -888,7 +965,16 @@
     <button id="music-toggle" class="music-btn" aria-label="Play Music" aria-pressed="false">🎵</button>
     <ul class="lightrope" id="holiday-lights" aria-hidden="true"></ul>
     <div class="stars" id="holiday-stars" aria-hidden="true"></div>
-    <div class="moon" aria-hidden="true"></div>
+    <div class="moon" role="button" aria-label="Play video: Working on the Moon" tabindex="0"></div>
+    <div id="moon-video-overlay" class="video-overlay" aria-hidden="true">
+        <div class="video-panel">
+            <button id="moon-video-close" class="video-close" aria-label="Close video">✕</button>
+            <iframe id="moon-video-iframe" src="" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+            <div class="video-fallback">
+                <a id="moon-open-youtube" href="https://www.youtube.com/watch?v=rSYwtllbweY&list=PLl3Hr9RYX6gPSyj7-_cRTcMi06DqZW9xh&index=1" target="_blank" rel="noopener">Open on YouTube</a>
+            </div>
+        </div> 
+    </div>
     <div class="snowflakes" id="holiday-snowflakes" aria-hidden="true"></div>
     <div class="scroll-wrapper">
         <div class="roller" aria-hidden="true"></div>
@@ -1354,6 +1440,57 @@
                 scrollWrapper.style.transform = `translateY(0) rotateY(${x * 2}deg) rotateX(${y * -2}deg)`;
             }
         }
+
+        // Moon video interaction: open YouTube embed when moon clicked
+        (function setupMoonVideo() {
+            const moonEl = document.querySelector('.moon');
+            const moonOverlay = document.getElementById('moon-video-overlay');
+            const moonIframe = document.getElementById('moon-video-iframe');
+            const moonClose = document.getElementById('moon-video-close');
+            const VIDEO_SRC = 'https://www.youtube-nocookie.com/embed/rSYwtllbweY?rel=0&autoplay=1&modestbranding=1';
+
+            function openMoonVideo() {
+                if (!moonOverlay || !moonIframe) return;
+                moonIframe.src = VIDEO_SRC;
+                moonOverlay.style.display = 'flex';
+                moonOverlay.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeMoonVideo() {
+                if (!moonOverlay || !moonIframe) return;
+                moonIframe.src = '';
+                moonOverlay.style.display = 'none';
+                moonOverlay.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+            }
+
+            if (moonEl) {
+                moonEl.addEventListener('click', openMoonVideo);
+                moonEl.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openMoonVideo();
+                    }
+                });
+            }
+            if (moonClose) moonClose.addEventListener('click', closeMoonVideo);
+            const moonOpenYouTube = document.getElementById('moon-open-youtube');
+            if (moonOpenYouTube) {
+                moonOpenYouTube.addEventListener('click', () => {
+                    // Close overlay when opening in YouTube to reduce duplicate windows
+                    closeMoonVideo();
+                });
+            }
+            if (moonOverlay) {
+                moonOverlay.addEventListener('click', (e) => {
+                    if (e.target === moonOverlay) closeMoonVideo();
+                });
+            }
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeMoonVideo();
+            });
+        })();
 
         function handleOrientation(event) {
             // Gamma is left-to-right tilt in degrees, where right is positive
