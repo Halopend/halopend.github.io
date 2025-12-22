@@ -690,6 +690,7 @@
         pointer-events: auto;
     }
 
+
     .video-fallback a {
         background: #ffd700;
         color: #0a1628;
@@ -698,6 +699,14 @@
         text-decoration: none;
         font-weight: 700;
         box-shadow: 0 4px 18px rgba(255,215,0,0.2);
+    }
+    .video-overlay[aria-hidden="false"] a { 
+        animation: opacityFadeOut 6s ease forwards 5s;
+    }
+    @keyframes opacityFadeOut {
+        to {
+            opacity: 0;
+        }
     }
 
     .video-fallback a:hover { filter: brightness(0.95); }
@@ -987,7 +996,7 @@
         <div class="roller" aria-hidden="true"></div>
         <div class="bottom-deco" aria-hidden="true">✦ ★ ✦</div>
     </div>
-    <div class="courtesy">from the FOM Team</div>
+    <div class="courtesy"></div>
     <div class="snow-floor" aria-hidden="true"></div>
     <div class="bear bear-left" aria-hidden="true"></div>
     <div class="bear" aria-hidden="true"></div>
@@ -1447,18 +1456,97 @@
             const moonOverlay = document.getElementById('moon-video-overlay');
             const moonIframe = document.getElementById('moon-video-iframe');
             const moonClose = document.getElementById('moon-video-close');
-            const VIDEO_SRC = 'https://www.youtube-nocookie.com/embed/rSYwtllbweY?rel=0&autoplay=1&modestbranding=1';
+            // include enablejsapi and origin so we can control the iframe if needed
+            const VIDEO_SRC = 'https://www.youtube-nocookie.com/embed/rSYwtllbweY?rel=0&autoplay=1&modestbranding=1&enablejsapi=1&origin=' + encodeURIComponent(location.origin);
+
+            let ytPlayer = null;
+            let ytAPILoading = false;
+            let timeUpdateInterval = null;
+            const TIME_UPDATE_MS = 500;
+
+            function loadYouTubeAPI(callback) {
+                if (window.YT && window.YT.Player) { callback(); return; }
+                if (ytAPILoading) { document.addEventListener('yt-api-ready', callback, { once: true }); return; }
+                ytAPILoading = true;
+                const tag = document.createElement('script');
+                tag.src = 'https://www.youtube.com/iframe_api';
+                window.onYouTubeIframeAPIReady = function() { ytAPILoading = false; document.dispatchEvent(new Event('yt-api-ready')); callback(); };
+                document.head.appendChild(tag);
+            }
+
+            function dispatchYtStateEvents(state) {
+                const stateNames = { '-1': 'unstarted', '0': 'ended', '1': 'playing', '2': 'paused', '3': 'buffering', '5': 'cued' };
+                const stateName = stateNames[String(state)] || 'unknown';
+                document.dispatchEvent(new CustomEvent('yt-player-state', { detail: { state, stateName, source: 'moon-video' } }));
+                if (state === 1) document.dispatchEvent(new CustomEvent('moonVideoPlaying'));
+                if (state === 2) document.dispatchEvent(new CustomEvent('moonVideoPaused'));
+                if (state === 0) document.dispatchEvent(new CustomEvent('moonVideoEnded'));
+
+                // Start/stop time updates when playing/paused/ended
+                if (state === 1) { // playing
+                    if (!timeUpdateInterval && ytPlayer && ytPlayer.getCurrentTime) {
+                        timeUpdateInterval = setInterval(() => {
+                            try {
+                                const currentTime = ytPlayer.getCurrentTime();
+                                const duration = ytPlayer.getDuration ? ytPlayer.getDuration() : null;
+                                document.dispatchEvent(new CustomEvent('moonVideoTimeUpdate', { detail: { currentTime, duration } }));
+                            } catch (err) {
+                                // ignore
+                            }
+                        }, TIME_UPDATE_MS);
+                    }
+                } else {
+                    // paused, ended, etc. stop updates
+                    if (timeUpdateInterval) {
+                        clearInterval(timeUpdateInterval);
+                        timeUpdateInterval = null;
+                    }
+                }
+            }
 
             function openMoonVideo() {
                 if (!moonOverlay || !moonIframe) return;
-                moonIframe.src = VIDEO_SRC;
                 moonOverlay.style.display = 'flex';
                 moonOverlay.setAttribute('aria-hidden', 'false');
                 document.body.style.overflow = 'hidden';
+
+                // Use YouTube IFrame API if possible so we can detect state changes
+                loadYouTubeAPI(() => {
+                    try {
+                        if (!ytPlayer && window.YT) {
+                            ytPlayer = new YT.Player('moon-video-iframe', {
+                                videoId: 'rSYwtllbweY',
+                                playerVars: { rel:0, modestbranding:1, autoplay:1 },
+                                events: {
+                                    onReady: (e) => { e.target.playVideo && e.target.playVideo(); },
+                                    onStateChange: (e) => { try { dispatchYtStateEvents(e.data); } catch (err) { console.warn(err); } },
+                                    onError: (e) => { console.warn('YT embed error', e.data); /* fallback UI already handled elsewhere */ }
+                                }
+                            });
+                        } else if (ytPlayer) {
+                            ytPlayer.loadVideoById('rSYwtllbweY');
+                        }
+                    } catch (err) {
+                        // As a last resort, set the iframe src; API may be blocked or fail
+                        moonIframe.src = VIDEO_SRC;
+                    }
+                });
+
+                // Safety fallback: if API doesn't load, set iframe src after a small delay
+                setTimeout(() => {
+                    if (!window.YT || !window.YT.Player) {
+                        moonIframe.src = VIDEO_SRC;
+                    }
+                }, 2500);
             }
 
             function closeMoonVideo() {
                 if (!moonOverlay || !moonIframe) return;
+                if (ytPlayer && ytPlayer.destroy) {
+                    try { ytPlayer.destroy(); } catch (e) {}
+                    ytPlayer = null;
+                }
+                if (timeUpdateInterval) { clearInterval(timeUpdateInterval); timeUpdateInterval = null; }
                 moonIframe.src = '';
                 moonOverlay.style.display = 'none';
                 moonOverlay.setAttribute('aria-hidden', 'true');
@@ -1490,6 +1578,13 @@
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') closeMoonVideo();
             });
+
+            // Debug logs to validate events
+            document.addEventListener('yt-player-state', (e) => console.log('YT state event:', e.detail));
+            document.addEventListener('moonVideoPlaying', () => console.log('Moon video is playing'));
+            document.addEventListener('moonVideoPaused', () => console.log('Moon video is paused'));
+            document.addEventListener('moonVideoEnded', () => console.log('Moon video ended'));
+            document.addEventListener('moonVideoTimeUpdate', (e) => console.log('Moon video time update:', e.detail.currentTime, 'duration:', e.detail.duration));
         })();
 
         function handleOrientation(event) {
