@@ -109,6 +109,12 @@
         pointer-events: none;
         z-index: 0;
         overflow: hidden;
+        transition: z-index 0s;
+    }
+
+    /* When video triggers snowflakes, bring them to front of everything */
+    .holiday-embed .snowflakes.video-enhanced {
+        z-index: 9999;
     }
 
     .holiday-embed .snowflake {
@@ -120,6 +126,12 @@
         animation: holidaySnowfall var(--fall-duration) linear infinite var(--snow-delay), holidaySnowAppear 0.5s ease forwards var(--appear-delay);
         text-shadow: 0 0 5px rgba(255,255,255,0.8);
         opacity: 0;
+    }
+
+    /* Video-triggered snowflakes appear immediately */
+    .holiday-embed .snowflake.video-triggered {
+        animation: holidaySnowfall var(--fall-duration) linear infinite var(--snow-delay);
+        opacity: var(--snow-opacity, 0.8);
     }
 
     @keyframes holidaySnowfall {
@@ -243,20 +255,20 @@
         }
 
         50% {
-            height: 480px;
+            height: 70vh;
             opacity: 1;
         }
 
         70% {
-            height: 540px;
+            height: 88vh;
         }
 
         85% {
-            height: 510px;
+            height: 82vh;
         }
 
         100% {
-            height: 520px;
+            height: 85vh;
         }
     }
 
@@ -747,6 +759,41 @@
         100% { transform: translateY(calc(100vh + 60px)) rotate(360deg); }
     }
 
+    /* Bear shake animations - progressive intensity */
+    @keyframes bearShake1 {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-1px) rotate(-0.5deg); }
+        75% { transform: translateX(1px) rotate(0.5deg); }
+    }
+    @keyframes bearShake2 {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-2px) rotate(-1deg); }
+        75% { transform: translateX(2px) rotate(1deg); }
+    }
+    @keyframes bearShake3 {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-4px) rotate(-2deg); }
+        75% { transform: translateX(4px) rotate(2deg); }
+    }
+    @keyframes bearShake4 {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-6px) rotate(-3deg); }
+        75% { transform: translateX(6px) rotate(3deg); }
+    }
+    @keyframes bearShakeCrescendo {
+        0%, 100% { transform: translateX(0) scale(1); }
+        10% { transform: translateX(-8px) rotate(-4deg) scale(1.02); }
+        30% { transform: translateX(8px) rotate(4deg) scale(1.02); }
+        50% { transform: translateX(-10px) rotate(-5deg) scale(1.03); }
+        70% { transform: translateX(10px) rotate(5deg) scale(1.03); }
+        90% { transform: translateX(-8px) rotate(-4deg) scale(1.02); }
+    }
+    .bear.shake-1 { animation: bearShake1 0.15s ease-in-out infinite !important; }
+    .bear.shake-2 { animation: bearShake2 0.12s ease-in-out infinite !important; }
+    .bear.shake-3 { animation: bearShake3 0.1s ease-in-out infinite !important; }
+    .bear.shake-4 { animation: bearShake4 0.08s ease-in-out infinite !important; }
+    .bear.shake-crescendo { animation: bearShakeCrescendo 0.15s ease-in-out infinite !important; }
+
     .penguin {
         position: absolute;
         bottom: -100px;
@@ -950,7 +997,7 @@
         }
 
         .scroll-paper {
-            height: 520px !important;
+            height: 85vh !important;
             opacity: 1 !important;
             animation: none !important;
         }
@@ -959,7 +1006,7 @@
             animation: none !important;
             transform: translateY(0) !important;
             overflow-y: auto;
-            max-height: 480px;
+            max-height: 75vh;
             padding-bottom: 20px;
         }
 
@@ -1010,14 +1057,14 @@
         
         @keyframes holidayUnfurl {
             0% { height: 0; opacity: 0.8; }
-            50% { height: 420px; opacity: 1; }
-            70% { height: 470px; }
-            85% { height: 445px; }
-            100% { height: 450px; }
+            50% { height: 65vh; opacity: 1; }
+            70% { height: 82vh; }
+            85% { height: 78vh; }
+            100% { height: 80vh; }
         }
         
         .holiday-embed .greeting-list {
-            max-height: 400px;
+            max-height: 70vh;
         }
         
         .courtesy {
@@ -1561,35 +1608,126 @@
             let ytPlayer = null;
             let pollInterval = null;
             let snowflakesTriggered = false;
+            let snowIntensityLevel = 0;
+            let bearShakeLevel = 0;
             const SNOWFLAKE_TIME = 102; // 1:42 in seconds
+            const BEAR_SHAKE_START = 129; // 2:09 in seconds
+            const BEAR_SHAKE_END = 135; // 2:15 in seconds
 
-            // Create snowflakes for video overlay
-            function createVideoSnowflakes() {
-                if (!videoSnowContainer || videoSnowContainer.children.length > 0) return;
+            // Create snowflakes for video overlay - accepts count parameter
+            function createVideoSnowflakes(count = 35) {
+                if (!videoSnowContainer) return;
                 const snowChars = ['❄', '❅', '❆', '✻', '✼'];
-                for (let i = 0; i < 35; i++) {
+                for (let i = 0; i < count; i++) {
                     const flake = document.createElement('div');
                     flake.className = 'vsnow';
                     flake.textContent = snowChars[Math.floor(Math.random() * snowChars.length)];
                     flake.style.setProperty('--vsnow-x', Math.random() * 100 + '%');
                     flake.style.setProperty('--vsnow-size', (0.8 + Math.random() * 1.4) + 'rem');
-                    flake.style.setProperty('--vsnow-duration', (6 + Math.random() * 8) + 's');
-                    flake.style.setProperty('--vsnow-delay', Math.random() * 5 + 's');
+                    flake.style.setProperty('--vsnow-duration', (4 + Math.random() * 6) + 's');
+                    flake.style.setProperty('--vsnow-delay', Math.random() * 2 + 's');
                     flake.style.setProperty('--vsnow-opacity', 0.5 + Math.random() * 0.5);
                     videoSnowContainer.appendChild(flake);
                 }
             }
 
+            // Add more snowflakes progressively based on time
+            function updateSnowIntensity(currentTime) {
+                if (!snowflakesTriggered) return;
+                const elapsed = currentTime - SNOWFLAKE_TIME;
+                // Increase intensity every 15 seconds after trigger
+                const newLevel = Math.floor(elapsed / 15);
+                if (newLevel > snowIntensityLevel && snowIntensityLevel < 6) {
+                    snowIntensityLevel = newLevel;
+                    // Add more snowflakes to the page
+                    const pageSnowflakes = document.getElementById('holiday-snowflakes');
+                    if (pageSnowflakes) {
+                        addMoreSnowflakes(pageSnowflakes, 15 + (snowIntensityLevel * 10));
+                    }
+                }
+            }
+
+            // Update bear shake based on video time (2:09 to 2:15)
+            function updateBearShake(currentTime) {
+                const bears = document.querySelectorAll('.bear');
+                if (!bears.length) return;
+
+                // Remove all shake classes first
+                const shakeClasses = ['shake-1', 'shake-2', 'shake-3', 'shake-4', 'shake-crescendo'];
+                
+                if (currentTime < BEAR_SHAKE_START || currentTime > BEAR_SHAKE_END + 0.5) {
+                    // Not in shake zone - remove shake
+                    bears.forEach(bear => shakeClasses.forEach(c => bear.classList.remove(c)));
+                    bearShakeLevel = 0;
+                    return;
+                }
+
+                const elapsed = currentTime - BEAR_SHAKE_START;
+                const duration = BEAR_SHAKE_END - BEAR_SHAKE_START; // 6 seconds
+                const progress = Math.min(elapsed / duration, 1);
+
+                // Determine shake level based on progress
+                let newLevel;
+                if (progress >= 0.95) {
+                    newLevel = 5; // Crescendo!
+                } else if (progress >= 0.75) {
+                    newLevel = 4;
+                } else if (progress >= 0.5) {
+                    newLevel = 3;
+                } else if (progress >= 0.25) {
+                    newLevel = 2;
+                } else {
+                    newLevel = 1;
+                }
+
+                if (newLevel !== bearShakeLevel) {
+                    bearShakeLevel = newLevel;
+                    bears.forEach(bear => {
+                        shakeClasses.forEach(c => bear.classList.remove(c));
+                        if (newLevel === 5) {
+                            bear.classList.add('shake-crescendo');
+                        } else if (newLevel > 0) {
+                            bear.classList.add('shake-' + newLevel);
+                        }
+                    });
+                }
+            }
+
             function showVideoSnowflakes() {
-                if (videoSnowContainer) {
-                    createVideoSnowflakes();
-                    videoSnowContainer.classList.add('active');
+                const pageSnowflakes = document.getElementById('holiday-snowflakes');
+                if (pageSnowflakes) {
+                    pageSnowflakes.classList.add('video-enhanced');
+                    // Add more snowflakes to the page container
+                    addMoreSnowflakes(pageSnowflakes, 25);
                 }
             }
 
             function hideVideoSnowflakes() {
-                if (videoSnowContainer) {
-                    videoSnowContainer.classList.remove('active');
+                const pageSnowflakes = document.getElementById('holiday-snowflakes');
+                if (pageSnowflakes) {
+                    pageSnowflakes.classList.remove('video-enhanced');
+                }
+                // Reset bear shake
+                bearShakeLevel = 0;
+                const bears = document.querySelectorAll('.bear');
+                const shakeClasses = ['shake-1', 'shake-2', 'shake-3', 'shake-4', 'shake-crescendo'];
+                bears.forEach(bear => shakeClasses.forEach(c => bear.classList.remove(c)));
+            }
+
+            // Add snowflakes to the page container
+            function addMoreSnowflakes(container, count) {
+                const snowChars = ['❄', '❅', '❆', '✻', '✼'];
+                for (let i = 0; i < count; i++) {
+                    const flake = document.createElement('div');
+                    flake.className = 'snowflake video-triggered';
+                    flake.textContent = snowChars[Math.floor(Math.random() * snowChars.length)];
+                    flake.style.setProperty('--flake-x', Math.random() * 100 + '%');
+                    flake.style.setProperty('--flake-size', (1 + Math.random() * 1.5) + 'rem');
+                    flake.style.setProperty('--fall-duration', (4 + Math.random() * 6) + 's');
+                    flake.style.setProperty('--snow-delay', Math.random() * 2 + 's');
+                    flake.style.setProperty('--snow-opacity', 0.7 + Math.random() * 0.3);
+                    flake.style.opacity = flake.style.getPropertyValue('--snow-opacity');
+                    container.appendChild(flake);
                 }
             }
 
@@ -1621,6 +1759,10 @@
                                 snowflakesTriggered = true;
                                 showVideoSnowflakes();
                             }
+                            // Progressive snowflake intensity
+                            updateSnowIntensity(currentTime);
+                            // Bear shake from 2:09 to 2:15
+                            updateBearShake(currentTime);
                         } catch (e) { /* ignore */ }
                     }
                 }, 500);
