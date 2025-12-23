@@ -719,6 +719,34 @@
         background: #000;
     }
 
+    .video-snowflakes {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 3;
+        overflow: hidden;
+        opacity: 0;
+        transition: opacity 1.5s ease;
+    }
+    .video-snowflakes.active {
+        opacity: 1;
+    }
+    .video-snowflakes .vsnow {
+        position: absolute;
+        color: #fff;
+        font-size: var(--vsnow-size, 1.2rem);
+        opacity: var(--vsnow-opacity, 0.8);
+        left: var(--vsnow-x);
+        top: -30px;
+        animation: vsnowFall var(--vsnow-duration, 8s) linear infinite;
+        animation-delay: var(--vsnow-delay, 0s);
+        text-shadow: 0 0 4px rgba(255,255,255,0.6);
+    }
+    @keyframes vsnowFall {
+        0% { transform: translateY(0) rotate(0deg); }
+        100% { transform: translateY(calc(100vh + 60px)) rotate(360deg); }
+    }
+
     .penguin {
         position: absolute;
         bottom: -100px;
@@ -980,6 +1008,7 @@
         <div class="video-panel">
             <button id="moon-video-close" class="video-close" aria-label="Close video">✕</button>
             <iframe id="moon-video-iframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen playsinline title="Working on the Moon"></iframe>
+            <div id="video-snowflakes" class="video-snowflakes" aria-hidden="true"></div>
             <div class="video-fallback">
                 <a id="moon-open-youtube" href="https://www.youtube.com/watch?v=rSYwtllbweY&list=PLl3Hr9RYX6gPSyj7-_cRTcMi06DqZW9xh&index=1" target="_blank" rel="noopener" style="">Open on YouTube</a>
             </div>
@@ -1457,9 +1486,81 @@
             const moonOverlay = document.getElementById('moon-video-overlay');
             const moonIframe = document.getElementById('moon-video-iframe');
             const moonClose = document.getElementById('moon-video-close');
+            const videoSnowContainer = document.getElementById('video-snowflakes');
 
-            function getVideoSrc() {
-                return 'https://www.youtube.com/embed/rSYwtllbweY?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+            let ytPlayer = null;
+            let pollInterval = null;
+            let snowflakesTriggered = false;
+            const SNOWFLAKE_TIME = 102; // 1:42 in seconds
+
+            // Create snowflakes for video overlay
+            function createVideoSnowflakes() {
+                if (!videoSnowContainer || videoSnowContainer.children.length > 0) return;
+                const snowChars = ['❄', '❅', '❆', '✻', '✼'];
+                for (let i = 0; i < 35; i++) {
+                    const flake = document.createElement('div');
+                    flake.className = 'vsnow';
+                    flake.textContent = snowChars[Math.floor(Math.random() * snowChars.length)];
+                    flake.style.setProperty('--vsnow-x', Math.random() * 100 + '%');
+                    flake.style.setProperty('--vsnow-size', (0.8 + Math.random() * 1.4) + 'rem');
+                    flake.style.setProperty('--vsnow-duration', (6 + Math.random() * 8) + 's');
+                    flake.style.setProperty('--vsnow-delay', Math.random() * 5 + 's');
+                    flake.style.setProperty('--vsnow-opacity', 0.5 + Math.random() * 0.5);
+                    videoSnowContainer.appendChild(flake);
+                }
+            }
+
+            function showVideoSnowflakes() {
+                if (videoSnowContainer) {
+                    createVideoSnowflakes();
+                    videoSnowContainer.classList.add('active');
+                }
+            }
+
+            function hideVideoSnowflakes() {
+                if (videoSnowContainer) {
+                    videoSnowContainer.classList.remove('active');
+                }
+            }
+
+            // Load YouTube IFrame API
+            function loadYouTubeAPI(callback) {
+                if (window.YT && window.YT.Player) { callback(); return; }
+                if (window.ytAPILoading) {
+                    document.addEventListener('yt-api-ready', callback, { once: true });
+                    return;
+                }
+                window.ytAPILoading = true;
+                const tag = document.createElement('script');
+                tag.src = 'https://www.youtube.com/iframe_api';
+                window.onYouTubeIframeAPIReady = function() {
+                    window.ytAPILoading = false;
+                    document.dispatchEvent(new Event('yt-api-ready'));
+                    callback();
+                };
+                document.head.appendChild(tag);
+            }
+
+            function startPolling() {
+                if (pollInterval) return;
+                pollInterval = setInterval(() => {
+                    if (ytPlayer && ytPlayer.getCurrentTime) {
+                        try {
+                            const currentTime = ytPlayer.getCurrentTime();
+                            if (currentTime >= SNOWFLAKE_TIME && !snowflakesTriggered) {
+                                snowflakesTriggered = true;
+                                showVideoSnowflakes();
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                }, 500);
+            }
+
+            function stopPolling() {
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                }
             }
 
             function openMoonVideo() {
@@ -1468,19 +1569,54 @@
                 if (isPlaying) {
                     toggleMusic();
                 }
-                // Set iframe src to load the video
-                moonIframe.src = getVideoSrc();
+                snowflakesTriggered = false;
+                hideVideoSnowflakes();
                 moonOverlay.style.display = 'flex';
                 moonOverlay.setAttribute('aria-hidden', 'false');
                 document.body.style.overflow = 'hidden';
+
+                // Use YouTube IFrame API
+                loadYouTubeAPI(() => {
+                    try {
+                        if (window.YT && window.YT.Player) {
+                            ytPlayer = new YT.Player('moon-video-iframe', {
+                                videoId: 'rSYwtllbweY',
+                                playerVars: { rel: 0, modestbranding: 1, autoplay: 1, playsinline: 1 },
+                                events: {
+                                    onReady: (e) => {
+                                        e.target.playVideo();
+                                        startPolling();
+                                    },
+                                    onStateChange: (e) => {
+                                        if (e.data === 1) startPolling(); // playing
+                                        if (e.data === 0 || e.data === 2) stopPolling(); // ended or paused
+                                    },
+                                    onError: () => {
+                                        // Fallback to direct iframe
+                                        moonIframe.src = 'https://www.youtube.com/embed/rSYwtllbweY?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+                                    }
+                                }
+                            });
+                        }
+                    } catch (err) {
+                        moonIframe.src = 'https://www.youtube.com/embed/rSYwtllbweY?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+                    }
+                });
             }
 
             function closeMoonVideo() {
                 if (!moonOverlay || !moonIframe) return;
+                stopPolling();
+                if (ytPlayer && ytPlayer.destroy) {
+                    try { ytPlayer.destroy(); } catch (e) {}
+                    ytPlayer = null;
+                }
                 moonIframe.src = '';
                 moonOverlay.style.display = 'none';
                 moonOverlay.setAttribute('aria-hidden', 'true');
                 document.body.style.overflow = '';
+                hideVideoSnowflakes();
+                snowflakesTriggered = false;
             }
 
             if (moonEl) {
