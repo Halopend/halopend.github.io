@@ -58,7 +58,7 @@
         z-index: 2147483647;
         /* pointer-events: none; */
     }
-
+    
     .lightrope, .stars, .moon, .snow-floor, .music-btn {
         opacity: 0;
         animation: holidayFadeIn var(--holiday-fade-in) ease-out forwards var(--holiday-start-delay);
@@ -689,8 +689,7 @@
         z-index: 2;
         pointer-events: auto;
     }
-
-
+   
     .video-fallback a {
         background: #ffd700;
         color: #0a1628;
@@ -699,13 +698,15 @@
         text-decoration: none;
         font-weight: 700;
         box-shadow: 0 4px 18px rgba(255,215,0,0.2);
+        transition: opacity 0.3s ease;
     }
-    .video-overlay[aria-hidden="false"] a { 
-        animation: opacityFadeOut 6s ease forwards 5s;
+    .video-overlay[aria-hidden="false"] .video-fallback a { 
+        animation: opacityFadeOut 1.5s ease forwards 3s;
     }
     @keyframes opacityFadeOut {
         to {
             opacity: 0;
+            pointer-events: none;
         }
     }
 
@@ -978,9 +979,9 @@
     <div id="moon-video-overlay" class="video-overlay" aria-hidden="true">
         <div class="video-panel">
             <button id="moon-video-close" class="video-close" aria-label="Close video">✕</button>
-            <iframe id="moon-video-iframe" src="" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+            <iframe id="moon-video-iframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen playsinline title="Working on the Moon"></iframe>
             <div class="video-fallback">
-                <a id="moon-open-youtube" href="https://www.youtube.com/watch?v=rSYwtllbweY&list=PLl3Hr9RYX6gPSyj7-_cRTcMi06DqZW9xh&index=1" target="_blank" rel="noopener">Open on YouTube</a>
+                <a id="moon-open-youtube" href="https://www.youtube.com/watch?v=rSYwtllbweY&list=PLl3Hr9RYX6gPSyj7-_cRTcMi06DqZW9xh&index=1" target="_blank" rel="noopener" style="">Open on YouTube</a>
             </div>
         </div> 
     </div>
@@ -1456,97 +1457,26 @@
             const moonOverlay = document.getElementById('moon-video-overlay');
             const moonIframe = document.getElementById('moon-video-iframe');
             const moonClose = document.getElementById('moon-video-close');
-            // include enablejsapi and origin so we can control the iframe if needed
-            const VIDEO_SRC = 'https://www.youtube-nocookie.com/embed/rSYwtllbweY?rel=0&autoplay=1&modestbranding=1&enablejsapi=1&origin=' + encodeURIComponent(location.origin);
 
-            let ytPlayer = null;
-            let ytAPILoading = false;
-            let timeUpdateInterval = null;
-            const TIME_UPDATE_MS = 500;
-
-            function loadYouTubeAPI(callback) {
-                if (window.YT && window.YT.Player) { callback(); return; }
-                if (ytAPILoading) { document.addEventListener('yt-api-ready', callback, { once: true }); return; }
-                ytAPILoading = true;
-                const tag = document.createElement('script');
-                tag.src = 'https://www.youtube.com/iframe_api';
-                window.onYouTubeIframeAPIReady = function() { ytAPILoading = false; document.dispatchEvent(new Event('yt-api-ready')); callback(); };
-                document.head.appendChild(tag);
-            }
-
-            function dispatchYtStateEvents(state) {
-                const stateNames = { '-1': 'unstarted', '0': 'ended', '1': 'playing', '2': 'paused', '3': 'buffering', '5': 'cued' };
-                const stateName = stateNames[String(state)] || 'unknown';
-                document.dispatchEvent(new CustomEvent('yt-player-state', { detail: { state, stateName, source: 'moon-video' } }));
-                if (state === 1) document.dispatchEvent(new CustomEvent('moonVideoPlaying'));
-                if (state === 2) document.dispatchEvent(new CustomEvent('moonVideoPaused'));
-                if (state === 0) document.dispatchEvent(new CustomEvent('moonVideoEnded'));
-
-                // Start/stop time updates when playing/paused/ended
-                if (state === 1) { // playing
-                    if (!timeUpdateInterval && ytPlayer && ytPlayer.getCurrentTime) {
-                        timeUpdateInterval = setInterval(() => {
-                            try {
-                                const currentTime = ytPlayer.getCurrentTime();
-                                const duration = ytPlayer.getDuration ? ytPlayer.getDuration() : null;
-                                document.dispatchEvent(new CustomEvent('moonVideoTimeUpdate', { detail: { currentTime, duration } }));
-                            } catch (err) {
-                                // ignore
-                            }
-                        }, TIME_UPDATE_MS);
-                    }
-                } else {
-                    // paused, ended, etc. stop updates
-                    if (timeUpdateInterval) {
-                        clearInterval(timeUpdateInterval);
-                        timeUpdateInterval = null;
-                    }
-                }
+            function getVideoSrc() {
+                return 'https://www.youtube.com/embed/rSYwtllbweY?autoplay=1&rel=0&modestbranding=1&playsinline=1';
             }
 
             function openMoonVideo() {
                 if (!moonOverlay || !moonIframe) return;
+                // Stop Christmas music when video opens
+                if (isPlaying) {
+                    toggleMusic();
+                }
+                // Set iframe src to load the video
+                moonIframe.src = getVideoSrc();
                 moonOverlay.style.display = 'flex';
                 moonOverlay.setAttribute('aria-hidden', 'false');
                 document.body.style.overflow = 'hidden';
-
-                // Use YouTube IFrame API if possible so we can detect state changes
-                loadYouTubeAPI(() => {
-                    try {
-                        if (!ytPlayer && window.YT) {
-                            ytPlayer = new YT.Player('moon-video-iframe', {
-                                videoId: 'rSYwtllbweY',
-                                playerVars: { rel:0, modestbranding:1, autoplay:1 },
-                                events: {
-                                    onReady: (e) => { e.target.playVideo && e.target.playVideo(); },
-                                    onStateChange: (e) => { try { dispatchYtStateEvents(e.data); } catch (err) { console.warn(err); } },
-                                    onError: (e) => { console.warn('YT embed error', e.data); /* fallback UI already handled elsewhere */ }
-                                }
-                            });
-                        } else if (ytPlayer) {
-                            ytPlayer.loadVideoById('rSYwtllbweY');
-                        }
-                    } catch (err) {
-                        // As a last resort, set the iframe src; API may be blocked or fail
-                        moonIframe.src = VIDEO_SRC;
-                    }
-                });
-
-                // Safety fallback: if API doesn't load, set iframe src after a small delay
-                setTimeout(() => {
-                    if (!window.YT || !window.YT.Player) {
-                        moonIframe.src = VIDEO_SRC;
-                    }
-                }, 2500);
             }
 
             function closeMoonVideo() {
                 if (!moonOverlay || !moonIframe) return;
-                if (ytPlayer && ytPlayer.destroy) {
-                    try { ytPlayer.destroy(); } catch (e) {}
-                    ytPlayer = null;
-                }
-                if (timeUpdateInterval) { clearInterval(timeUpdateInterval); timeUpdateInterval = null; }
                 moonIframe.src = '';
                 moonOverlay.style.display = 'none';
                 moonOverlay.setAttribute('aria-hidden', 'true');
@@ -1566,7 +1496,6 @@
             const moonOpenYouTube = document.getElementById('moon-open-youtube');
             if (moonOpenYouTube) {
                 moonOpenYouTube.addEventListener('click', () => {
-                    // Close overlay when opening in YouTube to reduce duplicate windows
                     closeMoonVideo();
                 });
             }
@@ -1578,13 +1507,6 @@
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') closeMoonVideo();
             });
-
-            // Debug logs to validate events
-            document.addEventListener('yt-player-state', (e) => console.log('YT state event:', e.detail));
-            document.addEventListener('moonVideoPlaying', () => console.log('Moon video is playing'));
-            document.addEventListener('moonVideoPaused', () => console.log('Moon video is paused'));
-            document.addEventListener('moonVideoEnded', () => console.log('Moon video ended'));
-            document.addEventListener('moonVideoTimeUpdate', (e) => console.log('Moon video time update:', e.detail.currentTime, 'duration:', e.detail.duration));
         })();
 
         function handleOrientation(event) {
