@@ -1076,7 +1076,7 @@
     <div id="moon-video-overlay" class="video-overlay" aria-hidden="true">
         <div class="video-panel">
             <button id="moon-video-close" class="video-close" aria-label="Close video">✕</button>
-            <iframe id="moon-video-iframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen playsinline title="Working on the Moon"></iframe>
+            <iframe id="moon-video-iframe" src="https://www.youtube.com/embed/rSYwtllbweY?enablejsapi=1&rel=0&modestbranding=1&playsinline=1&autoplay=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen playsinline title="Working on the Moon"></iframe>
             <div id="video-snowflakes" class="video-snowflakes" aria-hidden="true"></div>
             <div class="video-fallback">
                 <a id="moon-open-youtube" href="https://www.youtube.com/watch?v=rSYwtllbweY&list=PLl3Hr9RYX6gPSyj7-_cRTcMi06DqZW9xh&index=1" target="_blank" rel="noopener" style="">Open on YouTube</a>
@@ -1633,6 +1633,29 @@
                 }
             }
 
+            // Initialize YouTube player on page load
+            function initYouTubePlayer() {
+                loadYouTubeAPI(() => {
+                    try {
+                        if (window.YT && window.YT.Player && !ytPlayer) {
+                            ytPlayer = new YT.Player('moon-video-iframe', {
+                                events: {
+                                    onStateChange: (e) => {
+                                        if (e.data === 1) startPolling(); // playing
+                                        if (e.data === 0 || e.data === 2) stopPolling(); // ended or paused
+                                    }
+                                }
+                            });
+                        }
+                    } catch (err) {
+                        console.log('YouTube player init failed', err);
+                    }
+                });
+            }
+
+            // Init player early
+            initYouTubePlayer();
+
             function openMoonVideo() {
                 if (!moonOverlay || !moonIframe) return;
                 // Stop Christmas music when video opens
@@ -1645,43 +1668,25 @@
                 moonOverlay.setAttribute('aria-hidden', 'false');
                 document.body.style.overflow = 'hidden';
 
-                // Use YouTube IFrame API
-                loadYouTubeAPI(() => {
+                // Play the pre-loaded video
+                if (ytPlayer && ytPlayer.playVideo) {
                     try {
-                        if (window.YT && window.YT.Player) {
-                            ytPlayer = new YT.Player('moon-video-iframe', {
-                                videoId: 'rSYwtllbweY',
-                                playerVars: { rel: 0, modestbranding: 1, autoplay: 1, playsinline: 1 },
-                                events: {
-                                    onReady: (e) => {
-                                        e.target.playVideo();
-                                        startPolling();
-                                    },
-                                    onStateChange: (e) => {
-                                        if (e.data === 1) startPolling(); // playing
-                                        if (e.data === 0 || e.data === 2) stopPolling(); // ended or paused
-                                    },
-                                    onError: () => {
-                                        // Fallback to direct iframe
-                                        moonIframe.src = 'https://www.youtube.com/embed/rSYwtllbweY?autoplay=1&rel=0&modestbranding=1&playsinline=1';
-                                    }
-                                }
-                            });
-                        }
+                        ytPlayer.seekTo(0);
+                        ytPlayer.playVideo();
+                        startPolling();
                     } catch (err) {
-                        moonIframe.src = 'https://www.youtube.com/embed/rSYwtllbweY?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+                        console.log('Play failed', err);
                     }
-                });
+                }
             }
 
             function closeMoonVideo() {
                 if (!moonOverlay || !moonIframe) return;
                 stopPolling();
-                if (ytPlayer && ytPlayer.destroy) {
-                    try { ytPlayer.destroy(); } catch (e) {}
-                    ytPlayer = null;
+                // Pause instead of destroying - keep player ready
+                if (ytPlayer && ytPlayer.pauseVideo) {
+                    try { ytPlayer.pauseVideo(); } catch (e) {}
                 }
-                moonIframe.src = '';
                 moonOverlay.style.display = 'none';
                 moonOverlay.setAttribute('aria-hidden', 'true');
                 document.body.style.overflow = '';
